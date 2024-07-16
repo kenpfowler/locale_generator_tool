@@ -1,11 +1,14 @@
 import { z, ZodSchema, ZodTypeAny } from "zod";
+import { Locale } from "./locales";
+
+export type RecordWithUnknownValue<T = unknown> = Record<string, T>;
 
 /**
  * @param object object used as the source of your translation file
  * @returns a zod schema that can be used to validate the object used as the param
  */
 export const createSchemaFromObject = (
-  object: Record<string, any>
+  object: RecordWithUnknownValue
 ): ZodSchema => {
   const schemaShape: Record<string, ZodTypeAny> = {};
 
@@ -14,15 +17,45 @@ export const createSchemaFromObject = (
     if (typeof object[key] === "string") {
       schemaShape[key] = z.string();
     } else if (typeof object[key] === "object" && object[key] !== null) {
-      schemaShape[key] = createSchemaFromObject(object[key]); // Recursively create schema for nested objects
+      if (Object.keys(object[key]).length) {
+        schemaShape[key] = createSchemaFromObject(
+          object[key] as RecordWithUnknownValue
+        );
+      } else {
+        throw Error(
+          `value accessed by key: ${key} is type ${typeof object[
+            key
+          ]}, but has no keys. objects must not be empty`
+        );
+      } // Recursively create schema for nested objects
     } else {
-      throw new Error(
+      throw Error(
         `value accessed by key: ${key} is type ${typeof object[
           key
         ]}.  all values should be string or object`
       );
     }
   }
+
+  return z.object(schemaShape);
+};
+
+/**
+ *
+ * @param locales locale keys to provide validation for
+ * @param source source locale file used to create validation schema
+ * @returns a zod object where they keys are locales and the value is a schema mapped to the users source locale file
+ */
+export const getMasterSchema = (
+  locales: Array<Locale>,
+  source: RecordWithUnknownValue
+) => {
+  const schemaShape: Partial<Record<Locale, ZodTypeAny>> = {};
+  const localeSchema = createSchemaFromObject(source);
+
+  locales.forEach((locale) => {
+    schemaShape[locale] = localeSchema;
+  });
 
   return z.object(schemaShape);
 };

@@ -2,22 +2,33 @@ import OpenAI from "openai";
 import { LocaleFileGenerator } from "./LocaleFileGenerator";
 import { LocaleFileValidator } from "./LocaleFileValidator";
 import { LocaleFileWriter } from "./LocaleFileWriter";
-import z from "zod";
-import { createSchemaFromObject } from "./helper";
+import { getMasterSchema } from "./helper";
 import defaultLocale from "../en";
+import { Locale } from "./locales";
+import z from "zod";
 
-const schema = createSchemaFromObject(defaultLocale);
+// task generate schema from source file
 
-const masterSchema = z.object({
-  en: schema,
-  es: schema,
-  "pt-BR": schema,
-  "fr-CA": schema,
-});
+// what is the minimal amount of input that needs to come from the user?
+// 1. path to source locale file
+// 2. required translate-to locales
+// 3. path to destination of generated locale files (even this could be optional if we default from the root of this program.)
 
 const main = async () => {
   try {
-    const locales = ["en", "es", "pt-BR", "fr-CA"];
+    // these values can only be known at runtime since they are provided by the user.
+    // therefore we need validate the existance of our keys in the code and end the program if they are not as expected in order to continue with type safety
+    const rawLocales = ["en", "es", "pt-BR", "fr-CA"];
+
+    const locales = rawLocales.map((locale) => {
+      if (locale in Locale) {
+        return Locale[locale as keyof typeof Locale];
+      } else {
+        throw Error("Must supply valid locale");
+      }
+    });
+
+    const masterSchema = getMasterSchema(locales, defaultLocale);
 
     const generator = new LocaleFileGenerator(new OpenAI(), {
       localeFileSrcPath: "../en",
