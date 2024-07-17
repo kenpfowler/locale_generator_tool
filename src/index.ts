@@ -17,9 +17,8 @@ const main = async () => {
     // TODO: config file path should be set by the user
     const config = readConfig("config.json");
 
-    const generator = new LocaleFileGenerator(new OpenAI(), {
-      apiKey: process.env.OPENAI_API_KEY ?? "",
-    });
+    // FIXME: throw error if api key is not provided
+    const generator = new LocaleFileGenerator();
 
     const validator = new LocaleFileValidator();
 
@@ -32,16 +31,10 @@ const main = async () => {
       ...config,
     });
 
-    // 1. generate a json compliant string that represents our locale files
-
     // FIXME: translating even a moderately large source file can cause the program to fail.
     // it takes a long time to generate the translations. generation_time = locales * translation_keys * time_to_translate
     // does the gpt have a max space/threshold in the output where it will quit if the end is not reached?
     // can we break translation requests down into multiple requests if they are large and/or complex?
-
-    // 2. validate that each locale is present and that each key-value pair is present with the proper types
-
-    // 3. write the locale files to the configured output folder
     await manager.ManageLocales();
   } catch (error) {
     console.error(error);

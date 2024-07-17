@@ -5,10 +5,6 @@ dotenv.config();
 import { OpenAI } from "openai";
 import { Locale } from "./locales";
 
-export type LocaleFileGeneratorConfig = {
-  readonly apiKey: string;
-};
-
 /**
  * wrapper for the open ai client that can be configured to generate locale files from a single source file
  */
@@ -18,14 +14,21 @@ export class LocaleFileGenerator {
    */
   private client: OpenAI;
 
-  /**
-   *
-   * @param {OpenAI} client used to generate translations
-   * @param {LocaleFileGeneratorConfig} configuration used to configure project
-   */
-  constructor(client: OpenAI, { apiKey }: LocaleFileGeneratorConfig) {
-    this.client = client;
-    this.client.apiKey = apiKey;
+  constructor() {
+    this.client = new OpenAI();
+    this.client.apiKey = this.GetApiKey();
+  }
+
+  private GetApiKey() {
+    const key = process.env.OPENAI_API_KEY;
+
+    if (!key) {
+      throw Error(
+        ".env file should contain OPENAI_API_KEY property with value"
+      );
+    }
+
+    return key;
   }
 
   /**
