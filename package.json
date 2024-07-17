@@ -11,10 +11,14 @@
   "license": "ISC",
   "dependencies": {
     "@types/node": "^20.14.10",
+    "deep-diff": "^1.0.2",
     "dotenv": "^16.4.5",
     "openai": "^4.52.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.3",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/deep-diff": "^1.0.5"
   }
 }

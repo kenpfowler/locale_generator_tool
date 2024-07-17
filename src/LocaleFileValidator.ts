@@ -1,37 +1,19 @@
 import { ZodSchema } from "zod";
 
-type LocaleFileValidatorConfig<T> = {
-  source: string | null | undefined;
-  schema: ZodSchema<T>;
-};
-
 /**
  * validates that locale file data was created successfully
  */
-export class LocaleFileValidator<T> {
-  private source: string;
-  private schema: ZodSchema<T>;
-
-  constructor({ source, schema }: LocaleFileValidatorConfig<T>) {
-    if (this.isString(source)) {
-      this.source = source;
-    } else {
-      throw new Error("argument for property source should be type string");
-    }
-
-    this.schema = schema;
-  }
-
-  private isString(value: string | null | undefined): value is string {
+export class LocaleFileValidator {
+  public isString(value: unknown): value is string {
     return typeof value === "string";
   }
 
-  private isObject(obj: unknown): obj is object {
+  public isObject(obj: unknown): obj is object {
     return typeof obj === "object" && obj !== null;
   }
 
-  private parseJSON() {
-    const object = JSON.parse(this.source);
+  public parseJSON(source: string) {
+    const object = JSON.parse(source);
 
     if (!this.isObject(object)) {
       throw Error("JSON.parse did not return a javascript object");
@@ -40,9 +22,15 @@ export class LocaleFileValidator<T> {
     return object;
   }
 
-  public ValidateLocaleTranslation() {
-    const parsed = this.parseJSON();
-    const validated = this.schema.parse(parsed);
+  public ValidateLocaleTranslation<T>(
+    source: string | null | undefined,
+    schema: ZodSchema<T>
+  ) {
+    if (!this.isString(source)) {
+      throw Error("argument for property source should be type string");
+    }
+    const parsed = this.parseJSON(source);
+    const validated = schema.parse(parsed);
     return validated;
   }
 }

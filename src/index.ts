@@ -2,10 +2,11 @@ import OpenAI from "openai";
 import { LocaleFileGenerator } from "./LocaleFileGenerator";
 import { LocaleFileValidator } from "./LocaleFileValidator";
 import { LocaleFileWriter } from "./LocaleFileWriter";
-import { getMasterSchema } from "./helper";
-import defaultLocale from "../en";
 import { Locale } from "./locales";
-import z from "zod";
+
+// user supplied variables
+import rawLocales from "../locales";
+import { LocaleFileManager } from "./LocaleFileManager";
 
 // task generate schema from source file
 
@@ -18,7 +19,6 @@ const main = async () => {
   try {
     // these values can only be known at runtime since they are provided by the user.
     // therefore we need validate the existance of our keys in the code and end the program if they are not as expected in order to continue with type safety
-    const rawLocales = ["en", "es", "pt-BR", "fr-CA"];
 
     const locales = rawLocales.map((locale) => {
       if (locale in Locale) {
@@ -28,13 +28,22 @@ const main = async () => {
       }
     });
 
-    const masterSchema = getMasterSchema(locales, defaultLocale);
-
     const generator = new LocaleFileGenerator(new OpenAI(), {
-      localeFileSrcPath: "../en",
       apiKey: process.env.OPENAI_API_KEY ?? "",
-      defaultLocale: "en",
+    });
+
+    const validator = new LocaleFileValidator();
+
+    const writer = new LocaleFileWriter();
+
+    const manager = new LocaleFileManager({
+      source_path: "en.json",
+      source_locale: "en",
+      locales_path: "locales",
       locales,
+      generator,
+      validator,
+      writer,
     });
 
     // 1. generate a json compliant string that represents our locale files
@@ -43,23 +52,11 @@ const main = async () => {
     // it takes a long time to generate the translations. generation_time = locales * translation_keys * time_to_translate
     // does the gpt have a max space/threshold in the output where it will quit if the end is not reached?
     // can we break translation requests down into multiple requests if they are large and/or complex?
-    const source = await generator.GetLocaleTranslationsAsJSON();
-
-    const validator = new LocaleFileValidator<z.infer<typeof masterSchema>>({
-      source,
-      schema: masterSchema,
-    });
 
     // 2. validate that each locale is present and that each key-value pair is present with the proper types
-    const translations = validator.ValidateLocaleTranslation();
 
     // 3. write the locale files to the configured output folder
-    const localeWriter = new LocaleFileWriter({
-      folderPath: "./locales",
-      localeObjects: translations,
-    });
-
-    localeWriter.WriteLocaleFiles();
+    await manager.ManageLocales();
   } catch (error) {
     console.error(error);
   }

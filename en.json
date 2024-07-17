@@ -1,0 +1,12 @@
+{
+  "greeting": "Hello, World!",
+  "cat": {
+    "sound": "meow"
+  },
+  "dog": {
+    "sound": "poof"
+  },
+  "horse": {
+    "sound": "neigh"
+  }
+}

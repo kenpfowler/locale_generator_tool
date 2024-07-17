@@ -1,40 +1,32 @@
 import * as fs from "fs";
 import * as path from "path";
 
-type LocaleFileWriterConfig<T extends object> = {
-  localeObjects: T;
-  folderPath: string;
-};
-
 /**
  * writes locale files to your file systems desired locales folder
  */
-export class LocaleFileWriter<T extends object> {
-  private localeObjects;
-  private filePath;
-
-  constructor({
-    localeObjects,
-    folderPath: filePath,
-  }: LocaleFileWriterConfig<T>) {
-    this.localeObjects = localeObjects;
-    this.filePath = filePath;
-    this.EnsureFolderExists();
+export class LocaleFileWriter {
+  private GetFilePath(locales_path: string, key: string) {
+    return path.join(locales_path, `${key}.json`);
   }
 
-  private EnsureFolderExists(): void {
-    if (!fs.existsSync(this.filePath)) {
-      fs.mkdirSync(this.filePath, { recursive: true });
-    }
+  private HasKey<T>(locale_objects: T, key: string) {
+    return Object.prototype.hasOwnProperty.call(locale_objects, key);
   }
 
-  public WriteLocaleFiles() {
-    for (const key in this.localeObjects) {
-      if (Object.prototype.hasOwnProperty.call(this.localeObjects, key)) {
-        const locale = this.localeObjects[key];
-        const filePath = path.join(this.filePath, `${key}.json`);
-        const jsonData = JSON.stringify(locale, null, 2);
-        fs.writeFileSync(filePath, jsonData, "utf-8");
+  private writeJSONFile<T>(filePath: string, locale: T): void {
+    const jsonData = JSON.stringify(locale, null, 2);
+    fs.writeFileSync(filePath, jsonData, "utf-8");
+  }
+
+  public WriteLocaleFiles<T extends object>(
+    locale_objects: T,
+    locales_path: string
+  ) {
+    for (const key in locale_objects) {
+      if (this.HasKey(locale_objects, key)) {
+        const locale = locale_objects[key];
+        const filePath = this.GetFilePath(locales_path, key);
+        this.writeJSONFile(filePath, locale);
       }
     }
   }
