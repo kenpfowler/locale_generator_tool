@@ -3,8 +3,6 @@ import { LocaleFileGenerator } from "./LocaleFileGenerator";
 import { LocaleFileValidator } from "./LocaleFileValidator";
 import { LocaleFileWriter } from "./LocaleFileWriter";
 
-// user supplied variables
-import rawLocales from "../locales";
 import { LocaleFileManager, readConfig } from "./LocaleFileManager";
 
 // task generate schema from source file
@@ -16,10 +14,8 @@ import { LocaleFileManager, readConfig } from "./LocaleFileManager";
 
 const main = async () => {
   try {
+    // TODO: config file path should be set by the user
     const config = readConfig("config.json");
-
-    // these values can only be known at runtime since they are provided by the user.
-    // therefore we need validate the existance of our keys in the code and end the program if they are not as expected in order to continue with type safety
 
     const generator = new LocaleFileGenerator(new OpenAI(), {
       apiKey: process.env.OPENAI_API_KEY ?? "",
