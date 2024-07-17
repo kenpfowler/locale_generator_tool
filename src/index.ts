@@ -2,11 +2,10 @@ import OpenAI from "openai";
 import { LocaleFileGenerator } from "./LocaleFileGenerator";
 import { LocaleFileValidator } from "./LocaleFileValidator";
 import { LocaleFileWriter } from "./LocaleFileWriter";
-import { Locale } from "./locales";
 
 // user supplied variables
 import rawLocales from "../locales";
-import { LocaleFileManager } from "./LocaleFileManager";
+import { LocaleFileManager, readConfig } from "./LocaleFileManager";
 
 // task generate schema from source file
 
@@ -17,16 +16,10 @@ import { LocaleFileManager } from "./LocaleFileManager";
 
 const main = async () => {
   try {
+    const config = readConfig("config.json");
+
     // these values can only be known at runtime since they are provided by the user.
     // therefore we need validate the existance of our keys in the code and end the program if they are not as expected in order to continue with type safety
-
-    const locales = rawLocales.map((locale) => {
-      if (locale in Locale) {
-        return Locale[locale as keyof typeof Locale];
-      } else {
-        throw Error("Must supply valid locale");
-      }
-    });
 
     const generator = new LocaleFileGenerator(new OpenAI(), {
       apiKey: process.env.OPENAI_API_KEY ?? "",
@@ -37,13 +30,10 @@ const main = async () => {
     const writer = new LocaleFileWriter();
 
     const manager = new LocaleFileManager({
-      source_path: "en.json",
-      source_locale: "en",
-      locales_path: "locales",
-      locales,
       generator,
       validator,
       writer,
+      ...config,
     });
 
     // 1. generate a json compliant string that represents our locale files

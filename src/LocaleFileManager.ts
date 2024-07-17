@@ -28,22 +28,41 @@ enum Difference {
   InArray = "A",
 }
 
-type LocaleFileManagerConfig = {
-  source_path: string;
-  source_locale: string;
-  locales_path: string;
-  locales: Array<Locale>;
+const ConfigSchema = z.object({
+  locales: z.array(z.nativeEnum(Locale)),
+  locales_path: z.string(),
+  source_path: z.string(),
+  source_locale: z.nativeEnum(Locale),
+});
+
+type Config = z.infer<typeof ConfigSchema>;
+
+export function readConfig(filePath: string) {
+  const fileContent = fs.readFileSync(filePath, "utf-8");
+  const config = JSON.parse(fileContent);
+
+  const result = ConfigSchema.safeParse(config);
+
+  if (!result.success) {
+    console.error("Invalid configuration:", result.error.errors);
+    throw new Error("Invalid configuration file");
+  }
+
+  return result.data;
+}
+
+export type LocaleFileManagerConfig = {
   generator: LocaleFileGenerator;
   validator: LocaleFileValidator;
   writer: LocaleFileWriter;
-};
+} & Config;
 
 /**
  * manages changes to the generated files in the locales folder
  */
 export class LocaleFileManager {
   private readonly source_path: string;
-  private readonly source_locale: string;
+  private readonly source_locale: Locale;
   private readonly source: RecordWithUnknownValue | null = null;
   private readonly locales_path: string;
   private readonly locales: Array<Locale>;
