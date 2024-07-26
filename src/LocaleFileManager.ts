@@ -4,9 +4,13 @@ import { Diff, diff } from "deep-diff";
 import { LocaleFileGenerator } from "./LocaleFileGenerator";
 import { LocaleFileValidator } from "./LocaleFileValidator";
 import { LocaleFileWriter } from "./LocaleFileWriter";
-import { getMasterSchema, RecordWithUnknownValue } from "./helper";
+import {
+  getMasterSchema,
+  RecordWithUnknownValue,
+  CreateKeyValue,
+} from "./helper";
 import { Locale } from "./locales";
-import z from "zod";
+import z, { object } from "zod";
 
 /**
  * kind - indicates the kind of change; will be one of the following:
@@ -61,11 +65,13 @@ export type LocaleFileManagerConfig = {
  * manages changes to the generated files in the locales folder
  */
 export class LocaleFileManager {
+  private readonly cache: RecordWithUnknownValue | null = null;
+  private readonly previous_locales: string[];
   private readonly source_path: string;
   private readonly source_locale: Locale;
   private readonly source: RecordWithUnknownValue | null = null;
-  private readonly locales_path: string;
-  private readonly locales: Array<Locale>;
+  private readonly previous_locales_path: string;
+  private readonly current_locales: Locale[];
   private readonly generator: LocaleFileGenerator;
   private readonly validator: LocaleFileValidator;
   private readonly writer: LocaleFileWriter;
@@ -84,13 +90,14 @@ export class LocaleFileManager {
     this.writer = writer;
     this.source_path = source_path;
     this.source_locale = source_locale;
-    this.locales_path = locales_path;
-    this.locales = locales;
+    this.previous_locales_path = locales_path;
+    this.current_locales = locales;
+    this.previous_locales = this.GetPreviousLocales();
     this.EnsureLocalesFolderExists();
   }
 
   private JoinLocalesPath() {
-    return path.join(process.cwd(), this.locales_path);
+    return path.join(process.cwd(), this.previous_locales_path);
   }
 
   private EnsureLocalesFolderExists(): void {
@@ -108,59 +115,51 @@ export class LocaleFileManager {
     return fs.existsSync(filePath);
   }
 
-  private async GenerateAllLocaleFiles(locales?: Locale[]): Promise<void> {
-    const source = this.getSource();
+  private GetPreviousLocales() {
+    if (this.previous_locales) {
+      return this.previous_locales;
+    }
 
+    const locales = fs.readdirSync(this.previous_locales_path);
+    return locales;
+  }
+
+  private async GenerateAllLocaleFiles(
+    locales?: Locale[],
+    source?: RecordWithUnknownValue
+  ) {
     const masterSchema = getMasterSchema(
-      locales ? locales : this.locales,
-      source
+      locales ? locales : this.current_locales,
+      source ? source : this.GetSource()
     );
 
     const result = await this.generator.GetLocaleTranslationsAsJSON(
-      source,
+      source ? source : this.GetSource(),
       this.source_locale,
-      locales ? locales : this.locales
+      locales ? locales : this.current_locales
     );
 
     const validated = this.validator.ValidateLocaleTranslation<
       z.infer<typeof masterSchema>
     >(result, masterSchema);
 
-    this.writer.WriteLocaleFiles(validated, this.locales_path);
+    return validated;
   }
 
-  private getSourceAndLocaleDiff(sourceData: object) {
-    const locales = fs.readdirSync(this.locales_path);
-    const isNotIdentical: Diff<object, object>[][] = [];
+  private GetSourceAndLocaleDiff() {
+    const changes = diff(
+      this.readJSONFile(path.join(this.previous_locales_path, "en.json")),
+      this.GetSource()
+    );
 
-    // FIXME: should check each locale file in the locales folder to determine if
-    for (const locale of locales) {
-      const localeFilePath = path.join(this.JoinLocalesPath(), locale);
-
-      if (!this.fileExists(localeFilePath)) {
-        // TODO: what should this code block do.  SHould it even exist?
-      }
-
-      const localeData = this.readJSONFile(localeFilePath);
-
-      // we cant just stringify and compare.  we need to compare the keys of each locale file to the source file.
-      const differences = diff(localeData, sourceData);
-
-      if (Array.isArray(differences)) {
-        if (differences.length) {
-          isNotIdentical.push(differences);
-        }
-      }
-    }
-
-    return isNotIdentical;
+    return changes;
   }
 
   private IsLocalesEmpty() {
-    return !fs.readdirSync(this.locales_path).length;
+    return !fs.readdirSync(this.previous_locales_path).length;
   }
 
-  private getSource() {
+  private GetSource() {
     if (this.validator.isObject(this.source)) {
       return this.source as RecordWithUnknownValue;
     }
@@ -168,6 +167,10 @@ export class LocaleFileManager {
     return this.readJSONFile(
       path.join(process.cwd(), this.source_path)
     ) as RecordWithUnknownValue;
+  }
+
+  private GetLocaleFromLocales(fileName: string) {
+    return this.readJSONFile(path.join(this.previous_locales_path, fileName));
   }
 
   private LocalesArrayDifference(
@@ -188,12 +191,14 @@ export class LocaleFileManager {
     return diff1.concat(diff2);
   }
 
+  /**
+   *
+   * @returns an array of locales that are different from the value in the config, if any
+   */
   private GetLocaleChanges() {
-    const locales = fs.readdirSync(this.locales_path);
-
     const diffs = this.LocalesArrayDifference(
-      this.locales,
-      locales
+      this.current_locales,
+      this.GetPreviousLocales()
         .map((locale) => locale.split(".")[0])
         .filter((locale) => typeof locale !== "undefined") as Locale[]
     );
@@ -205,34 +210,32 @@ export class LocaleFileManager {
     return !!diffs.length;
   }
 
-  private IsSourceChanged(changes: Diff<object, object>[][]) {
-    return !!changes.length;
+  private GetLocalesToAddRemoveFromDiff(diffs: Locale[]) {
+    const user_locales = new Set(this.current_locales);
+    const batch: { add: Locale[]; remove: string[] } = { add: [], remove: [] };
+
+    diffs.forEach((diff) => {
+      if (user_locales.has(diff)) {
+        batch.add.push(diff);
+      } else {
+        batch.remove.push(path.join(this.JoinLocalesPath(), `${diff}.json`));
+      }
+    });
+
+    return batch;
   }
 
-  private async AddRemoveLocales(diffs: Locale[]) {
-    const user_locales = new Set(this.locales);
-
+  private async AddRemoveLocales(batch: { add: Locale[]; remove: string[] }) {
     function removeLocaleFileGeneration(filePath: string) {
       fs.unlinkSync(filePath);
     }
 
-    const batch: Locale[] = [];
+    if (batch.add.length) {
+      await this.GenerateAllLocaleFiles(batch.add);
+    }
 
-    diffs.forEach((diff) => {
-      if (user_locales.has(diff)) {
-        // add or
-        batch.push(diff);
-        // batch add
-      } else {
-        // remove
-        removeLocaleFileGeneration(
-          path.join(this.JoinLocalesPath(), `${diff}.json`)
-        );
-      }
-    });
-
-    if (batch.length) {
-      await this.GenerateAllLocaleFiles(batch);
+    if (batch.remove.length) {
+      batch.remove.forEach(removeLocaleFileGeneration);
     }
   }
 
@@ -240,11 +243,12 @@ export class LocaleFileManager {
    * determines how the locale files folder contents needs to be modified based on the users configuration
    */
   public async ManageLocales(): Promise<void> {
-    const source = this.getSource();
     // 1. there is a source file and no generations
     // action: manager should generate all locale files and all of their key - values
     if (this.IsLocalesEmpty()) {
-      await this.GenerateAllLocaleFiles();
+      const result = await this.GenerateAllLocaleFiles();
+      this.writer.WriteLocaleFiles(result, this.previous_locales_path);
+
       console.log("Generated all locale files.");
       process.exit(0);
     }
@@ -252,34 +256,72 @@ export class LocaleFileManager {
     // 2. a locale is added and/or removed.
     // action: manager should generate the added locale and/or remove a deleted locale
     const diff = this.GetLocaleChanges();
+    const batch = this.GetLocalesToAddRemoveFromDiff(diff);
 
     if (this.IsLocalesChanged(diff)) {
-      await this.AddRemoveLocales(diff);
+      await this.AddRemoveLocales(batch);
     }
 
     // 3. it's possible that locales was not changed, but that the source file was changed.
     // OR locales was changed and the source file was changed
     // what changes could the user make...
     // (add a property to the source, remove a property from the source, change the value for one of the sources keys. change the name of one of the source keys)
-    const changes = this.getSourceAndLocaleDiff(source);
+    const changes = this.GetSourceAndLocaleDiff();
 
     // NOTE: for the locales that were just generated we have the latest changes so we don't need to compare the objects
-    if (!this.IsSourceChanged(changes)) {
+    // currently we just look in the locales folder for all the files
+    // if something was removed from the locales folder this wont be compared so thats fine
+    // if something was just added it would be compared though it does not need to be.
+    // lets provide the locales less any just generated locales as an arg
+
+    if (!changes) {
       console.log(
         "Source file is identical to locales. Make changes before generating new files."
       );
       process.exit(0);
     }
 
-    changes.forEach((change, index) => {
-      console.log(`change# ${index}`, change);
+    const editable = {};
+
+    const locales_to_update = this.GetPreviousLocales();
+
+    locales_to_update.forEach((locale) => {
+      const object = this.GetLocaleFromLocales(locale);
+      // @ts-ignore
+      editable[locale.split(".")[0] as string] = object;
     });
 
-    // 4. a property is added and/or removed from the source file
-    // action: manager should add and/or remove properties from all generated files.
-    // 5. a key is changed in the source file
-    // action: manager should change key is the generated files
-    // 6. a value is changed in the source file
-    // action: manager should change generate new values for the generated file under that key
+    const value = changes.reduce((accumulator, currentValue) => {
+      if (currentValue.kind === "N" || currentValue.kind === "E") {
+        return {
+          ...accumulator,
+          ...CreateKeyValue(currentValue.path as string[], currentValue.rhs),
+        };
+      } else {
+        // FIXME:
+        // can we add deleted keys too an array while we reduce?
+      }
+
+      return accumulator;
+    }, {});
+
+    const result = await this.GenerateAllLocaleFiles(
+      locales_to_update.map(
+        (filePath) => filePath.split(".")[0] as string
+      ) as Locale[],
+      value
+    );
+
+    // TODO:
+    // currently we can merge new properties and edited properties
+    // but we cannot delete removed properties
+    for (const key in editable) {
+      if (Object.prototype.hasOwnProperty.call(editable, key)) {
+        //@ts-ignore
+        editable[key] = { ...editable[key], ...result[key] };
+      }
+    }
+
+    this.writer.WriteLocaleFiles(editable, this.previous_locales_path);
   }
 }
