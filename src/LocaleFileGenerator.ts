@@ -36,9 +36,11 @@ export class LocaleFileGenerator {
    */
   public async GetLocaleTranslationsAsJSON(
     source: object,
-    default_locale: string,
+    default_locale: Locale,
     locales: Locale[]
   ) {
+    // FIXME: should not generate the default locale.  this is already known from the users source schema.
+    // This will have to be added with some code and we have to make sure the chain of events still works.
     const systemMessage: OpenAI.Chat.ChatCompletionMessageParam = {
       role: "system",
       content: `You are a translator specialized in creating locale files for web projects.  You will translate a locale file that I provide into the following languages: ${locales.join(
@@ -55,7 +57,7 @@ export class LocaleFileGenerator {
 
     const params: OpenAI.Chat.ChatCompletionCreateParams = {
       messages: [systemMessage, userMessage],
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o",
       response_format: { type: "json_object" },
     };
 
