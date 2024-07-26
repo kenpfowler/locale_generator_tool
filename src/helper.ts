@@ -59,3 +59,27 @@ export const getMasterSchema = (
 
   return z.object(schemaShape);
 };
+
+/**
+ *
+ * @param path an array of keys to follow where the value will be stored. the last key in the path array is the most deeply nested
+ * @param value
+ * @returns an object where the value provided is nested given an path of keys
+ */
+export function CreateKeyValue(path: string[], value: string | object) {
+  let obj = {};
+
+  for (let index = path.length - 1; index >= 0; index--) {
+    const key = path[index];
+
+    if (index === path.length - 1) {
+      // @ts-ignore
+      obj[key] = value;
+    } else {
+      // @ts-ignore
+      obj = { [key]: { ...obj } };
+    }
+  }
+
+  return obj;
+}
